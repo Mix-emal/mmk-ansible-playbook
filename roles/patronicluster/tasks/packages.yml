@@ -1,0 +1,27 @@
+---
+
+- name: Update and upgrade apt packages
+  become: true
+  ansible.builtin.apt:
+    upgrade: true
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Install main packages Debian like
+  become: true
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - vim
+    - sysstat
+    - tcpdump
+    - htop
+    - wget
+    - mlocate
+    - atop
+    - iftop
+    - telnet
+    - iotop
+    - unzip
+  when: ansible_os_family == "Debian"

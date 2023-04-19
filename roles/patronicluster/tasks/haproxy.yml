@@ -1,0 +1,41 @@
+- name: Update and upgrade apt packages
+  become: true
+  ansible.builtin.apt:
+    upgrade: true
+    update_cache: true
+    cache_valid_time: 86400
+  tags: haproxy
+  when: inventory_hostname in groups ["haproxy"]
+
+
+- name: Install main packages Debian like
+  become: true
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - haproxy
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups ["haproxy"]
+  tags: haproxy
+
+- name: Create haproxy config
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: haproxy
+    group: haproxy
+    mode: "0644"
+  # notify:
+  #   - Restart patroni
+  when: inventory_hostname in groups ["haproxy"]
+  tags: haproxy
+
+- name: Restart haproxy service
+  ansible.builtin.systemd:
+    name: haproxy
+    state: restarted
+    enabled: true
+  when: inventory_hostname in groups ["haproxy"]
+  tags: haproxy

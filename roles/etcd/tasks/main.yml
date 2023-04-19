@@ -1,0 +1,5 @@
+---
+# tasks file for etcd
+- name: Install ETCD Role
+  ansible.builtin.import_tasks: etcd-install.yml
+  tags: ['install']

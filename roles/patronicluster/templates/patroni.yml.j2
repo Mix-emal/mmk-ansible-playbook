@@ -1,0 +1,158 @@
+# {{ ansible_managed }}
+scope: {{ patroni_cluster_name }}
+namespace: {{ patroni_etcd_namespace }}
+name: {{ ansible_hostname }}
+
+log:
+  level: WARNING
+  format: '%(asctime)s %(levelname)s: %(message)s'
+  dateformat: ''
+  max_queue_size: 1000
+  dir: {{ patroni_log_dir }}
+  file_num: 4
+  file_size: 25000000
+  loggers:
+    postgres.postmaster: WARNING
+    urllib3: DEBUG
+
+restapi:
+  listen: {{ ansible_default_ipv4.address }}:8008
+  connect_address: {{ ansible_default_ipv4.address }}:8008
+#  cafile: /etc/ssl/certs/ssl-cacert-snakeoil.pem
+#  certfile: /etc/ssl/certs/ssl-cert-snakeoil.pem
+#  keyfile: /etc/ssl/private/ssl-cert-snakeoil.key
+#  authentication:
+#    username: username
+#    password: password
+
+#ctl:
+#  insecure: false # Allow connections to Patroni REST API without verifying certificates
+#  certfile: /etc/ssl/certs/ssl-cert-snakeoil.pem
+#  keyfile: /etc/ssl/private/ssl-cert-snakeoil.key
+#  cacert: /etc/ssl/certs/ssl-cacert-snakeoil.pem
+
+#citus:
+#  database: citus
+#  group: 0  # coordinator
+
+etcd3:
+  #Provide host to do the initial discovery of the cluster topology:
+  #host: 127.0.0.1:2379
+  #Or use "hosts" to provide multiple endpoints
+  #Could be a comma separated string:
+  #hosts: host1:port1,host2:port2
+  #or an actual yaml list:
+  hosts:
+{% for h in groups['etcd'] %}
+  - {{ hostvars[h].ansible_default_ipv4.address }}:2379
+{% endfor %} 
+  #Once discovery is complete Patroni will use the list of advertised clientURLs
+  #It is possible to change this behavior through by setting:
+  #use_proxies: true
+
+bootstrap:
+  # this section will be written into Etcd:/<namespace>/<scope>/config after initializing new cluster
+  # and all other cluster members will use it as a `global configuration`
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+#    primary_start_timeout: 300
+#    synchronous_mode: false
+    #standby_cluster:
+      #host: 127.0.0.1
+      #port: 1111
+      #primary_slot_name: patroni
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        log_connections: 'on'
+#        wal_level: hot_standby
+#        hot_standby: "on"
+        max_connections: 2000
+#        max_worker_processes: 8
+#        wal_keep_segments: 8
+#        max_wal_senders: 10
+#        max_replication_slots: 10
+#        max_prepared_transactions: 0
+#        max_locks_per_transaction: 64
+#        wal_log_hints: "on"
+#        track_commit_timestamp: "off"
+#        archive_mode: "on"
+#        archive_timeout: 1800s
+#        archive_command: mkdir -p ../wal_archive && test ! -f ../wal_archive/%f && cp %p ../wal_archive/%f
+#      recovery_conf:
+#        restore_command: cp ../wal_archive/%f %p
+
+  # some desired options for 'initdb'
+  initdb:  # Note: It needs to be a list (some options need values, others are switches)
+  - encoding: UTF8
+  - data-checksums
+
+  pg_hba:  # Add following lines to pg_hba.conf after running 'initdb'
+  # For kerberos gss based connectivity (discard @.*$)
+  #- host replication replicator 127.0.0.1/32 gss include_realm=0
+  #- host all all 0.0.0.0/0 gss include_realm=0
+  - host replication {{ postgre_replica_username }} all md5
+  - host all {{ postgre_superuser_username }} all md5
+#  - hostssl all all 0.0.0.0/0 md5
+
+  # Additional script to be launched after initial cluster creation (will be passed the connection URL as parameter)
+# post_init: /usr/local/bin/setup_cluster.sh
+
+  # Some additional users users which needs to be created after initializing new cluster
+  users:
+    postgres:
+      password: {{ postgre_superuser_password }}
+      options:
+        - createrole
+        - createdb
+    repl:
+      password: {{ postgre_replica_password }}
+      options:
+        - replication
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: {{ ansible_default_ipv4.address }}:5432
+
+#  proxy_address: 127.0.0.1:5433  # The address of connection pool (e.g., pgbouncer) running next to Patroni/Postgres. Only for service discovery.
+  data_dir: {{ postgre_data_dir }}
+  bin_dir: {{ postgre_bin_dir }}
+  config_dir: {{ postgre_config_dir }}
+  pgpass: {{ postgre_pgpass_file }}
+  pg_hba:
+    - local all all trust
+    - host all {{ postgre_superuser_username }} all md5
+    - host replication {{ postgre_replica_username }} all md5
+  authentication:
+    replication:
+      username: {{ postgre_replica_username }}
+      password: {{ postgre_replica_password }}
+    superuser:
+      username: {{ postgre_superuser_username }}
+      password: {{ postgre_superuser_password }}
+  #  rewind:  # Has no effect on postgres 10 and lower
+    #  username: rewind_user
+    #  password: rewind_password
+  # Server side kerberos spn
+#  krbsrvname: postgres
+  parameters:
+    # Fully qualified kerberos ticket file for the running user
+    # same as KRB5CCNAME used by the GSS
+#   krb_server_keyfile: /var/spool/keytabs/postgres
+    unix_socket_directories: '..'  # parent directory of data_dir
+  # Additional fencing script executed after acquiring the leader lock but before promoting the replica
+  #pre_promote: /path/to/pre_promote.sh
+
+#watchdog:
+#  mode: automatic # Allowed values: off, automatic, required
+#  device: /dev/watchdog
+#  safety_margin: 5
+
+tags:
+    nofailover: false
+    noloadbalance: false
+    clonefrom: false
+    nosync: false

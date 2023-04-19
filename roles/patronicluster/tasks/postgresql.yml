@@ -1,0 +1,72 @@
+- name: Add key for Postgres repo
+  become: true
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Add Postgres repo to sources list
+  become: true
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
+    state: present
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Update repo cache
+  become: true
+  ansible.builtin.apt:
+    upgrade: false
+    update_cache: true
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Install Postgis
+  become: true
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - libpq-dev
+    - postgresql-contrib-14
+    - postgresql-14
+    - postgresql-14-postgis-3
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Stop postgresql service
+  ansible.builtin.service:
+    name: postgresql
+    state: stopped
+    enabled: true
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Remove data postgres
+  when: inventory_hostname in groups ["pgsql"]
+  block:
+
+    - name: Remove default data Postgres
+      become: true
+      ansible.builtin.file:
+        path: /var/lib/postgresql/14/main
+        state: absent
+
+    - name: Remove data Postgres
+      become: true
+      ansible.builtin.file:
+        path: "{{ postgre_data_dir }}"
+        state: absent
+
+    - name: Create empty folder
+      become: true
+      ansible.builtin.file:
+        path: "{{ postgre_data_dir }}"
+        state: directory
+        owner: postgres
+        mode: "0700"
+    
+    - name: Create log folder
+      become: true
+      ansible.builtin.file:
+        path: "{{ patroni_log_dir }}"
+        state: directory
+        owner: postgres
+        mode: "0700"
+

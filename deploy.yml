@@ -1,0 +1,38 @@
+---
+- name: Deploy
+  hosts: group
+  become: true
+  vars:
+    pg_patroni_nodes: "{{ groups['pgsql'] }}"
+    etcd_version: "v3.5.8"
+    etcd_port_peer: 2380
+    etcd_scheme: http://
+    etcd_cluster: "{% for host in groups['etcd'] %}{{ hostvars[host]['ansible_hostname'] }}={{ etcd_scheme }}{{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ etcd_port_peer }}{% if not loop.last %},{% endif %}{% endfor %}"
+    etcd_folder_path: /etcd
+    etcd_config_path: "{{ etcd_folder_path }}"
+    etcd_config_file: "{{ etcd_config_path }}/etcd.conf.yml"
+    etcd_environment_file: "{{ etcd_folder_path }}/etcd_env"
+    etcd_data_path: "{{ etcd_folder_path }}/data"
+    etcd_token: patroni_cluster
+
+    postgre_data_dir: /postgre/data
+    postgre_bin_dir: /usr/lib/postgresql/14/bin
+    postgre_config_dir: /etc/postgresql/14/main
+    postgre_pgpass_file: /tmp/pgpass0
+    postgre_replica_username: replicator
+    postgre_replica_password: HG0a92!^gs
+    postgre_superuser_username: postgres
+    postgre_superuser_password: Ks*F219A?z
+
+    patroni_cluster_name: postgres
+    patroni_etcd_namespace: /pg_cluster/
+    patroni_log_dir: /postgre/log
+
+  roles:
+    - role: etcd
+      tags: etcd
+    - role: patronicluster
+      tags: patroni
+  environment:
+     http_proxy: http://10.9.100.11:8080
+     https_proxy: http://10.9.100.11:8080

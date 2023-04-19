@@ -1,0 +1,13 @@
+---
+# tasks file for patronicluster
+- name: Install Packages Role
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Install Postgres Role
+  ansible.builtin.import_tasks: postgresql.yml
+
+- name: Install Patroni Role
+  ansible.builtin.import_tasks: patroni.yml
+
+- name: Install Haproxy
+  ansible.builtin.import_tasks: haproxy.yml

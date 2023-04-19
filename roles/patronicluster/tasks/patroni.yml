@@ -1,0 +1,117 @@
+---
+- name: Install and upgrade pip
+  when: inventory_hostname in groups ["pgsql"]
+  block:
+    # Установка pip
+    - name: Install Pip
+      become: true
+      ansible.builtin.apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - python3-pip
+
+    - name: Upgrade pip
+      ansible.builtin.pip:
+        name: pip
+        extra_args: --upgrade
+
+- name: Install dependencies
+  ansible.builtin.apt:
+    name: ['python3-psycopg2', 'gcc', 'python3-dev', 'wget']
+    state: present
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Install patroni
+  ansible.builtin.pip:
+    name: patroni[etcd]
+    state: present
+    executable: pip3
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Create patroni symlink
+  ansible.builtin.file:
+    src: "/usr/local/bin/{{ item }}"
+    dest: "/bin/{{ item }}"
+    state: link
+  with_items:
+    - patroni
+    - patronictl
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Create patroni systemd unit
+  become: true
+  ansible.builtin.template:
+    src: patroni.service.j2
+    dest: /usr/lib/systemd/system/patroni.service
+    owner: root
+    group: root
+    mode: "0644"
+  changed_when: true
+  notify:
+    - Patroni daemon reload
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Stopped patroni service
+  ansible.builtin.systemd:
+    name: patroni
+    state: stopped
+    enabled: true
+  notify:
+  when: inventory_hostname in groups ["pgsql"]
+  tags: ["patroni_stop"]
+
+- name: Create /etc/patroni
+  ansible.builtin.file:
+    state: directory
+    dest: /etc/patroni
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Create patroni config
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  # notify:
+  #   - Restart patroni
+  when: inventory_hostname in groups ["pgsql"]
+  tags: config
+
+- name: Create /etc/patroni
+  ansible.builtin.file:
+    state: directory
+    dest: /etc/patroni
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  when: inventory_hostname in groups ["pgsql"]
+
+- name: Start patroni service
+  ansible.builtin.systemd:
+    name: patroni
+    state: started
+    enabled: true
+  when: inventory_hostname in groups ["pgsql"]
+
+# - name: disable the default service
+#   service: name={{ patroni_pg_default_service }} state=stopped enabled=no
+
+# - name: put a systemctl unit file
+#   template: src=patroni.service dest=/etc/systemd/system/patroni.service
+#   when: (ansible_distribution == 'Debian' and (ansible_distribution_major_version is version_compare(8, '>='))) or
+#         (ansible_distribution == 'Ubuntu' and (ansible_distribution_version is version_compare(14.04, '>'))) or
+#         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+
+# - name: enable and start patroni service
+#   service: name="patroni" enabled=yes state=started
+#   when: (ansible_distribution == 'Debian' and (ansible_distribution_major_version is version_compare(8, '>='))) or
+#         (ansible_distribution == 'Ubuntu' and (ansible_distribution_version is version_compare(14.04, '>'))) or
+#         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
